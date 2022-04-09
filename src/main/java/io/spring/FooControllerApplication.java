@@ -1,4 +1,4 @@
-package com.example.foocontroller;
+package io.spring;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
