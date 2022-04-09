@@ -29,7 +29,7 @@ docker run \
   --network host \
   docker.pkg.github.com/kubernetes-client/java/crd-model-gen:v1.0.6 \
   /generate.sh \
-  -u https://raw.githubusercontent.com/kubernetes-native-java/controllers-101/main/k8s/crds/foo.yaml
+  -u https://raw.githubusercontent.com/kubernetes-native-java/controllers-101/main/k8s/crds/foo.yaml \
   -n com.example.stable \
   -p com.example.stable \
   -o "$(pwd)"
