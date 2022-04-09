@@ -3,6 +3,7 @@ kind: CustomResourceDefinition
 metadata:
   name: foos.spring.io
 spec:
+  preserveUnknownFields: false
   group: spring.io
   versions:
     - name: v1
@@ -19,8 +20,9 @@ spec:
                   type: string
   scope: Namespaced
   names:
+    kind: Foo
+    listKind: FooList
     plural: foos
     singular: foo
-    kind: Foo
     shortNames:
       - foo
