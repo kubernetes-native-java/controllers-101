@@ -1,5 +1,6 @@
 package io.spring;
 
+import com.google.gson.JsonElement;
 import io.kubernetes.client.extended.controller.Controller;
 import io.kubernetes.client.extended.controller.builder.ControllerBuilder;
 import io.kubernetes.client.extended.controller.reconciler.Reconciler;
@@ -15,6 +16,8 @@ import io.kubernetes.client.util.Yaml;
 import io.kubernetes.client.util.generic.GenericKubernetesApi;
 import io.spring.models.V1Foo;
 import io.spring.models.V1FooList;
+import io.spring.models.V1FooSpec;
+import io.spring.models.V1FooStatus;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -23,6 +26,8 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
 import org.springframework.core.io.Resource;
+import org.springframework.nativex.hint.TypeAccess;
+import org.springframework.nativex.hint.TypeHint;
 import org.springframework.util.Assert;
 import org.springframework.util.FileCopyUtils;
 
@@ -34,7 +39,14 @@ import java.util.concurrent.Executors;
 //
 // https://github.com/kubernetes-client/java/tree/master/examples/examples-release-13
 //
-
+@TypeHint(
+        access = {
+                TypeAccess.DECLARED_FIELDS, TypeAccess.DECLARED_METHODS, TypeAccess.DECLARED_CONSTRUCTORS,
+                TypeAccess.DECLARED_CLASSES
+        },
+        types = {
+                JsonElement.class ,
+                V1Foo.class, V1FooList.class, V1FooSpec.class, V1FooStatus.class})
 @SpringBootApplication
 public class FooControllerApplication {
 
@@ -70,8 +82,7 @@ public class FooControllerApplication {
     @Bean
     Reconciler reconciler(AppsV1Api coreV1Api,
                           @Value("classpath:/deployment.yaml") Resource resourceForDeploymentYaml,
-                          SharedIndexInformer<V1Foo> fooNodeInformer,
-                          GenericKubernetesApi<V1Deployment, V1DeploymentList> deploymentApi) {
+                          SharedIndexInformer<V1Foo> fooNodeInformer, GenericKubernetesApi<V1Deployment, V1DeploymentList> deploymentApi) {
         return new FooReconciler(coreV1Api, resourceForDeploymentYaml, fooNodeInformer, deploymentApi);
     }
 
@@ -118,24 +129,27 @@ record FooReconciler(AppsV1Api coreV1Api, Resource resourceForDeploymentYaml,
     @Override
     @SneakyThrows
     public Result reconcile(Request request) {
-
         var foo = fooNodeInformer.getIndexer().getByKey(request.getNamespace() + "/" + request.getName());
         if (foo != null) {
             log.info("there's a new Foo in town! Let's make sure we've got a deployment to match...");
             var nameOfDeployment = foo.getMetadata().getName() + "-deployment";
             log.info("does the deployment called " + nameOfDeployment + " exist?");
             var existingDeployment = this.deploymentApi.get(foo.getMetadata().getNamespace(), nameOfDeployment);
-            if (existingDeployment != null && existingDeployment.isSuccess()) {
+            if (existingDeployment.isSuccess()) {
                 log.info("the deployment already exists!");
             } //
             else {
                 var deployment = loadYamlAs(resourceForDeploymentYaml, V1Deployment.class);
                 deployment.getMetadata().setName(nameOfDeployment);
-
-                var namespacedDeployment = this.coreV1Api.createNamespacedDeployment(
-                        foo.getMetadata().getNamespace(), deployment, "true", null, "", "");
-                Assert.notNull(namespacedDeployment, () -> "the Deployment result should be non-null");
-                log.info("created a deployment called " + nameOfDeployment);
+                try {
+                    var namespacedDeployment = this.coreV1Api.createNamespacedDeployment(
+                            foo.getMetadata().getNamespace(), deployment, "true", null, "", "");
+                    Assert.notNull(namespacedDeployment, () -> "the Deployment result should be non-null");
+                    log.info("created a deployment called " + nameOfDeployment);
+                } //
+                catch (Throwable t) {
+                    log.error("nooo!", t);
+                }
             }
         }//
         else {
