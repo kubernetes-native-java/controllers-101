@@ -31,6 +31,10 @@ import java.time.Duration;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+//
+// https://github.com/kubernetes-client/java/tree/master/examples/examples-release-13
+//
+
 @SpringBootApplication
 public class FooControllerApplication {
 
@@ -107,19 +111,9 @@ public class FooControllerApplication {
 }
 
 @Slf4j
-class FooReconciler implements Reconciler {
-
-    private final AppsV1Api coreV1Api;
-    private final Resource resourceForDeploymentYaml;
-    private final SharedIndexInformer<V1Foo> fooNodeInformer;
-    private final GenericKubernetesApi<V1Deployment, V1DeploymentList> deploymentApi;
-
-    FooReconciler(AppsV1Api coreV1Api, Resource resourceForDeploymentYaml, SharedIndexInformer<V1Foo> fooNodeInformer, GenericKubernetesApi<V1Deployment, V1DeploymentList> deploymentApi) {
-        this.coreV1Api = coreV1Api;
-        this.resourceForDeploymentYaml = resourceForDeploymentYaml;
-        this.fooNodeInformer = fooNodeInformer;
-        this.deploymentApi = deploymentApi;
-    }
+record FooReconciler(AppsV1Api coreV1Api, Resource resourceForDeploymentYaml,
+                     SharedIndexInformer<V1Foo> fooNodeInformer,
+                     GenericKubernetesApi<V1Deployment, V1DeploymentList> deploymentApi) implements Reconciler {
 
     @Override
     @SneakyThrows
@@ -145,7 +139,9 @@ class FooReconciler implements Reconciler {
             }
         }//
         else {
-            log.info("there are no Foos. This should be queued up for deletion, perhaps?");
+            log.info("there are no Foos that match the requested name and namespace. " +
+                    "We should check for the deployment and delete it if it exists");
+
         }
         return new Result(false);
     }
@@ -156,5 +152,4 @@ class FooReconciler implements Reconciler {
                 new InputStreamReader(resource.getInputStream()));
         return Yaml.loadAs(yaml, clzz);
     }
-
 }
