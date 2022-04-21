@@ -1,0 +1,6 @@
+apiVersion: spring.io/v1
+kind: Foo
+metadata:
+  name: demo
+spec:
+  name: bootiful-foo
