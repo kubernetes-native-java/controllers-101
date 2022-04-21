@@ -16,8 +16,7 @@ import io.kubernetes.client.util.generic.GenericKubernetesApi;
 import io.spring.models.V1Foo;
 import io.spring.models.V1FooList;
 import lombok.SneakyThrows;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.SpringApplication;
@@ -34,8 +33,6 @@ import java.util.concurrent.Executors;
 
 @SpringBootApplication
 public class FooControllerApplication {
-
-    private static final Log log = LogFactory.getLog(FooControllerApplication.class);
 
     public static void main(String[] args) {
         SpringApplication.run(FooControllerApplication.class, args);
@@ -59,57 +56,6 @@ public class FooControllerApplication {
             SharedInformerFactory sharedInformerFactory,
             GenericKubernetesApi<V1Foo, V1FooList> configClientApi) {
         return sharedInformerFactory.sharedIndexInformerFor(configClientApi, V1Foo.class, 0);
-    }
-
-    @SneakyThrows
-    private static <T> T loadYamlAs(Resource resource, Class<T> clzz) {
-        var yaml = FileCopyUtils.copyToString(
-                new InputStreamReader(resource.getInputStream()));
-        return Yaml.loadAs(yaml, clzz);
-    }
-
-    static class FooReconciler implements Reconciler {
-
-        private final AppsV1Api coreV1Api;
-        private final Resource resourceForDeploymentYaml;
-        private final SharedIndexInformer<V1Foo> fooNodeInformer;
-        private final GenericKubernetesApi<V1Deployment, V1DeploymentList> deploymentApi;
-
-        FooReconciler(AppsV1Api coreV1Api, Resource resourceForDeploymentYaml, SharedIndexInformer<V1Foo> fooNodeInformer, GenericKubernetesApi<V1Deployment, V1DeploymentList> deploymentApi) {
-            this.coreV1Api = coreV1Api;
-            this.resourceForDeploymentYaml = resourceForDeploymentYaml;
-            this.fooNodeInformer = fooNodeInformer;
-            this.deploymentApi = deploymentApi;
-        }
-
-        @Override
-        @SneakyThrows
-        public Result reconcile(Request request) {
-
-            var foo = fooNodeInformer.getIndexer().getByKey(request.getNamespace() + "/" + request.getName());
-            if (foo != null) {
-                log.info("there's a new Foo in town! Let's make sure we've got a deployment to match...");
-                var nameOfDeployment = foo.getMetadata().getName() + "-deployment";
-                log.info("does the deployment called " + nameOfDeployment + " exist?");
-                var existingDeployment = this.deploymentApi.get(foo.getMetadata().getNamespace(), nameOfDeployment);
-                if (existingDeployment != null && existingDeployment.isSuccess()) {
-                     log.info("the deployment already exists!");
-                } //
-                else {
-                    var deployment = loadYamlAs(resourceForDeploymentYaml, V1Deployment.class);
-                    deployment .getMetadata().setName(  nameOfDeployment);
-
-                    var namespacedDeployment = this.coreV1Api.createNamespacedDeployment(
-                            foo.getMetadata().getNamespace(), deployment, "true", null, "", "");
-                    Assert.notNull(namespacedDeployment, () -> "the Deployment result should be non-null");
-                    log.info("created a deployment called "+ nameOfDeployment);
-                }
-            }//
-            else {
-                log.info("there are no Foos. This should be queued up for deletion, perhaps?");
-            }
-            return new Result(false);
-        }
     }
 
     @Bean
@@ -144,7 +90,6 @@ public class FooControllerApplication {
 
     }
 
-
     @Bean
     ExecutorService executorService() {
         return Executors.newCachedThreadPool();
@@ -159,7 +104,57 @@ public class FooControllerApplication {
             controller.run();
         });
     }
-
 }
 
+@Slf4j
+class FooReconciler implements Reconciler {
 
+    private final AppsV1Api coreV1Api;
+    private final Resource resourceForDeploymentYaml;
+    private final SharedIndexInformer<V1Foo> fooNodeInformer;
+    private final GenericKubernetesApi<V1Deployment, V1DeploymentList> deploymentApi;
+
+    FooReconciler(AppsV1Api coreV1Api, Resource resourceForDeploymentYaml, SharedIndexInformer<V1Foo> fooNodeInformer, GenericKubernetesApi<V1Deployment, V1DeploymentList> deploymentApi) {
+        this.coreV1Api = coreV1Api;
+        this.resourceForDeploymentYaml = resourceForDeploymentYaml;
+        this.fooNodeInformer = fooNodeInformer;
+        this.deploymentApi = deploymentApi;
+    }
+
+    @Override
+    @SneakyThrows
+    public Result reconcile(Request request) {
+
+        var foo = fooNodeInformer.getIndexer().getByKey(request.getNamespace() + "/" + request.getName());
+        if (foo != null) {
+            log.info("there's a new Foo in town! Let's make sure we've got a deployment to match...");
+            var nameOfDeployment = foo.getMetadata().getName() + "-deployment";
+            log.info("does the deployment called " + nameOfDeployment + " exist?");
+            var existingDeployment = this.deploymentApi.get(foo.getMetadata().getNamespace(), nameOfDeployment);
+            if (existingDeployment != null && existingDeployment.isSuccess()) {
+                log.info("the deployment already exists!");
+            } //
+            else {
+                var deployment = loadYamlAs(resourceForDeploymentYaml, V1Deployment.class);
+                deployment.getMetadata().setName(nameOfDeployment);
+
+                var namespacedDeployment = this.coreV1Api.createNamespacedDeployment(
+                        foo.getMetadata().getNamespace(), deployment, "true", null, "", "");
+                Assert.notNull(namespacedDeployment, () -> "the Deployment result should be non-null");
+                log.info("created a deployment called " + nameOfDeployment);
+            }
+        }//
+        else {
+            log.info("there are no Foos. This should be queued up for deletion, perhaps?");
+        }
+        return new Result(false);
+    }
+
+    @SneakyThrows
+    private static <T> T loadYamlAs(Resource resource, Class<T> clzz) {
+        var yaml = FileCopyUtils.copyToString(
+                new InputStreamReader(resource.getInputStream()));
+        return Yaml.loadAs(yaml, clzz);
+    }
+
+}
