@@ -3,6 +3,7 @@ package io.spring;
 import com.google.gson.JsonElement;
 import io.kubernetes.client.extended.controller.Controller;
 import io.kubernetes.client.extended.controller.builder.ControllerBuilder;
+import io.kubernetes.client.extended.controller.builder.DefaultControllerBuilder;
 import io.kubernetes.client.extended.controller.reconciler.Reconciler;
 import io.kubernetes.client.extended.controller.reconciler.Result;
 import io.kubernetes.client.informer.SharedIndexInformer;
@@ -61,15 +62,6 @@ public class FooControllerApplication {
         return new GenericKubernetesApi<>(V1Deployment.class, V1DeploymentList.class, "", "v1", "deployments", apiClient);
     }
 
- /*
-    @Bean
-    SharedIndexInformer<V1Deployment> deploymentsSharedIndexInformer(
-                    SharedInformerFactory sharedInformerFactory,
-             GenericKubernetesApi<V1Deployment, V1DeploymentList> api) {
-        return sharedInformerFactory.sharedIndexInformerFor(api, V1Deployment.class, 0);
-    }
-*/
-
     @Bean
     SharedIndexInformer<V1Foo> foosSharedIndexInformer(SharedInformerFactory sharedInformerFactory, GenericKubernetesApi<V1Foo, V1FooList> api) {
         return sharedInformerFactory.sharedIndexInformerFor(api, V1Foo.class, 0);
@@ -83,49 +75,14 @@ public class FooControllerApplication {
     @Bean
     Controller controller(SharedInformerFactory sharedInformerFactory,
                           SharedIndexInformer<V1Foo> fooNodeInformer,
-//                          SharedIndexInformer<V1Deployment> deploymentSharedIndexInformer,
                           Reconciler reconciler) {
 
-
-        var builder = ControllerBuilder //
+        DefaultControllerBuilder builder = ControllerBuilder //
                 .defaultBuilder(sharedInformerFactory)//
-                .watch(fooQ -> {
-
-                    /*
-                    deploymentSharedIndexInformer.addEventHandler(new ResourceEventHandler<>() {
-
-                        @Override
-                        public void onAdd(V1Deployment obj) {
-                            // noop
-                        }
-
-                        @Override
-                        public void onUpdate(V1Deployment oldObj, V1Deployment newObj) {
-                            // todo
-                        }
-
-                        @Override
-                        public void onDelete(V1Deployment obj, boolean deletedFinalStateUnknown) {
-                            var ownerReferences = obj.getMetadata().getOwnerReferences();
-                            for (V1OwnerReference or : ownerReferences) { //this will trigger the requeue of our Foo to the reconciler if a dependent Deployment fails
-                                if (or.getKind().equals("Foo")) {
-                                    String ns = obj.getMetadata().getNamespace();
-                                    String name = or.getName();
-                                    log.info("detected a deleted child object. Requeued " + ns + "/" + name + "for processing...");
-                                    fooQ.add(new Request(ns, name));
-                                }
-                            }
-                        }
-                    });*/
-
-
-                    return ControllerBuilder //
-                            .controllerWatchBuilder(V1Foo.class, fooQ)//
-                            .withResyncPeriod(Duration.ofSeconds(1))//
-                            .build(); //
-
-
-                }) //
+                .watch(fooQ -> ControllerBuilder //
+                        .controllerWatchBuilder(V1Foo.class, fooQ)//
+                        .withResyncPeriod(Duration.ofSeconds(1))//
+                        .build()) //
                 .withWorkerCount(2);
         return builder//
                 .withReconciler(reconciler) //
