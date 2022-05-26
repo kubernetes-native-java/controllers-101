@@ -120,7 +120,7 @@ public class FooControllerApplication {
                 // create new one on k apply -f foo.yaml
                 String key = request.getNamespace() + '/' + request.getName();
                 V1Foo foo = v1FooSharedIndexInformer.getIndexer().getByKey(key);
-                if (foo == null) {
+                if (foo == null) { // deleted. we use ownerreferences so dont need to do anything special here
                     return new Result(false);
                 }
                 V1Deployment deployment = loadYamlAs(deploymentYaml, V1Deployment.class);
