@@ -39,18 +39,16 @@ import java.util.concurrent.Executors;
 //
 // https://github.com/kubernetes-client/java/tree/master/examples/examples-release-13
 //
-@TypeHint(access = {TypeAccess.DECLARED_FIELDS, TypeAccess.DECLARED_METHODS, TypeAccess.DECLARED_CONSTRUCTORS, TypeAccess.DECLARED_CLASSES}, types = {JsonElement.class, V1Foo.class, V1FooList.class, V1FooSpec.class, V1FooStatus.class})
 @Log4j2
+@TypeHint(
+        access = {TypeAccess.DECLARED_FIELDS, TypeAccess.DECLARED_METHODS, TypeAccess.DECLARED_CONSTRUCTORS, TypeAccess.DECLARED_CLASSES}, //
+        types = {JsonElement.class, V1Foo.class, V1FooList.class, V1FooSpec.class, V1FooStatus.class}//
+)
 @SpringBootApplication
 public class FooControllerApplication {
 
     public static void main(String[] args) {
         SpringApplication.run(FooControllerApplication.class, args);
-    }
-
-    @Bean
-    GenericKubernetesApi<V1Deployment, V1DeploymentList> deploymentsApi(ApiClient apiClient) {
-        return new GenericKubernetesApi<>(V1Deployment.class, V1DeploymentList.class, "", "v1", "deployments", apiClient);
     }
 
     @Bean
@@ -67,16 +65,6 @@ public class FooControllerApplication {
     AppsV1Api appsV1Api(ApiClient apiClient) {
         return new AppsV1Api(apiClient);
     }
-
-/*
-    @Bean
-    Reconciler reconciler(AppsV1Api coreV1Api,
-                          @Value("classpath:/deployment.yaml") Resource resourceForDeploymentYaml,
-                          SharedIndexInformer<V1Foo> fooNodeInformer,
-                          GenericKubernetesApi<V1Deployment, V1DeploymentList> deploymentApi) {
-        return new FooReconciler(coreV1Api, resourceForDeploymentYaml, fooNodeInformer, deploymentApi);
-    }
-*/
 
     @Bean
     Controller controller(SharedInformerFactory sharedInformerFactory,
@@ -103,7 +91,8 @@ public class FooControllerApplication {
     }
 
     @Bean
-    ApplicationRunner runner(ExecutorService executorService, SharedInformerFactory sharedInformerFactory, Controller controller) {
+    ApplicationRunner runner(
+        ExecutorService executorService, SharedInformerFactory sharedInformerFactory, Controller controller) {
         return args -> executorService.execute(() -> {
             sharedInformerFactory.startAllRegisteredInformers();
             controller.run();
@@ -117,14 +106,11 @@ public class FooControllerApplication {
     @Bean
     Reconciler reconciler(
             @Value("classpath:deployment.yaml") Resource deploymentYaml,
-            GenericKubernetesApi<V1Deployment, V1DeploymentList> deploymentApi,
             SharedIndexInformer<V1Foo> v1FooSharedIndexInformer,
-            GenericKubernetesApi<V1Foo, V1FooList> fooApi,
             AppsV1Api appsV1Api) {
         return request -> {
+
             try {
-
-
                 // create new one on k apply -f foo.yaml
                 String key = request.getNamespace() + '/' + request.getName();
                 V1Foo foo = v1FooSharedIndexInformer.getIndexer().getByKey(key);
@@ -145,9 +131,7 @@ public class FooControllerApplication {
                 String dryRun = null;
                 String fieldManager = "";
                 String fieldValidation = "";
-
                 try {
-
                     appsV1Api.createNamespacedDeployment(
                             namespace, deployment, pretty, dryRun, fieldManager, fieldValidation);
                     System.out.println("It worked! we created a new one!");
@@ -162,9 +146,9 @@ public class FooControllerApplication {
                                     namespace, deployment, pretty, dryRun, fieldManager, fieldValidation);
 
                         }
-                    }
-                    else {
+                    } else {
                         log.error("we've got an error.", throwable);
+                        return new Result(true, Duration.ofSeconds(10));
                     }
                 }
 
@@ -172,6 +156,7 @@ public class FooControllerApplication {
             }//
             catch (Throwable e) {
                 log.error("we've got an outer error.", e);
+                return new Result(true, Duration.ofSeconds(60));
             }
 
             return new Result(false);
