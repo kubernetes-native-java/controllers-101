@@ -57,8 +57,22 @@ public class FooControllerApplication {
     }
 
     @Bean
-    SharedIndexInformer<V1Foo> fooNodeInformer(SharedInformerFactory sharedInformerFactory, GenericKubernetesApi<V1Foo, V1FooList> configClientApi) {
-        return sharedInformerFactory.sharedIndexInformerFor(configClientApi, V1Foo.class, 0);
+    GenericKubernetesApi<V1Deployment, V1DeploymentList> deploymentsApi(ApiClient apiClient) {
+        return new GenericKubernetesApi<>(V1Deployment.class, V1DeploymentList.class, "", "v1", "deployments", apiClient);
+    }
+
+ /*
+    @Bean
+    SharedIndexInformer<V1Deployment> deploymentsSharedIndexInformer(
+                    SharedInformerFactory sharedInformerFactory,
+             GenericKubernetesApi<V1Deployment, V1DeploymentList> api) {
+        return sharedInformerFactory.sharedIndexInformerFor(api, V1Deployment.class, 0);
+    }
+*/
+
+    @Bean
+    SharedIndexInformer<V1Foo> foosSharedIndexInformer(SharedInformerFactory sharedInformerFactory, GenericKubernetesApi<V1Foo, V1FooList> api) {
+        return sharedInformerFactory.sharedIndexInformerFor(api, V1Foo.class, 0);
     }
 
     @Bean
@@ -69,16 +83,52 @@ public class FooControllerApplication {
     @Bean
     Controller controller(SharedInformerFactory sharedInformerFactory,
                           SharedIndexInformer<V1Foo> fooNodeInformer,
+//                          SharedIndexInformer<V1Deployment> deploymentSharedIndexInformer,
                           Reconciler reconciler) {
+
+
         var builder = ControllerBuilder //
                 .defaultBuilder(sharedInformerFactory)//
-                .watch((queue) -> ControllerBuilder //
-                        .controllerWatchBuilder(V1Foo.class, queue)//
-                        .withResyncPeriod(Duration.ofSeconds(1))//
-                        .build() //
-                ) //
+                .watch(fooQ -> {
+
+                    /*
+                    deploymentSharedIndexInformer.addEventHandler(new ResourceEventHandler<>() {
+
+                        @Override
+                        public void onAdd(V1Deployment obj) {
+                            // noop
+                        }
+
+                        @Override
+                        public void onUpdate(V1Deployment oldObj, V1Deployment newObj) {
+                            // todo
+                        }
+
+                        @Override
+                        public void onDelete(V1Deployment obj, boolean deletedFinalStateUnknown) {
+                            var ownerReferences = obj.getMetadata().getOwnerReferences();
+                            for (V1OwnerReference or : ownerReferences) { //this will trigger the requeue of our Foo to the reconciler if a dependent Deployment fails
+                                if (or.getKind().equals("Foo")) {
+                                    String ns = obj.getMetadata().getNamespace();
+                                    String name = or.getName();
+                                    log.info("detected a deleted child object. Requeued " + ns + "/" + name + "for processing...");
+                                    fooQ.add(new Request(ns, name));
+                                }
+                            }
+                        }
+                    });*/
+
+
+                    return ControllerBuilder //
+                            .controllerWatchBuilder(V1Foo.class, fooQ)//
+                            .withResyncPeriod(Duration.ofSeconds(1))//
+                            .build(); //
+
+
+                }) //
                 .withWorkerCount(2);
-        return builder.withReconciler(reconciler) //
+        return builder//
+                .withReconciler(reconciler) //
                 .withReadyFunc(fooNodeInformer::hasSynced) // optional: only start once the index is synced
                 .withName("fooController") ///
                 .build();
@@ -92,7 +142,7 @@ public class FooControllerApplication {
 
     @Bean
     ApplicationRunner runner(
-        ExecutorService executorService, SharedInformerFactory sharedInformerFactory, Controller controller) {
+            ExecutorService executorService, SharedInformerFactory sharedInformerFactory, Controller controller) {
         return args -> executorService.execute(() -> {
             sharedInformerFactory.startAllRegisteredInformers();
             controller.run();
@@ -170,62 +220,4 @@ public class FooControllerApplication {
                 new InputStreamReader(resource.getInputStream()));
         return Yaml.loadAs(yaml, clzz);
     }
-
-
 }
-
-
-/*
-
-@Slf4j
-record FooReconciler(AppsV1Api coreV1Api, Resource resourceForDeploymentYaml,
-                     SharedIndexInformer<V1Foo> fooNodeInformer,
-                     GenericKubernetesApi<V1Deployment, V1DeploymentList> deploymentApi) implements Reconciler {
-
-    @Override
-    @SneakyThrows
-    public Result reconcile(Request request) {
-
-
-    var foo = fooNodeInformer.getIndexer().getByKey(request.getNamespace() + "/" + request.getName());
-        if (foo != null) {
-            log.info("there's a new Foo in town! Let's make sure we've got a deployment to match...");
-            var nameOfDeployment = foo.getMetadata().getName() + "-deployment";
-            log.info("does the deployment called " + nameOfDeployment + " exist?");
-
-            var existingDeployment = this.deploymentApi
-                    .get(foo.getMetadata().getNamespace(), nameOfDeployment);
-            if (existingDeployment.isSuccess()) {
-                log.info("the deployment already exists!");
-            } //
-            else {
-                var deployment = loadYamlAs(resourceForDeploymentYaml, V1Deployment.class);
-                deployment.getMetadata().setName(nameOfDeployment);
-                try {
-                    var namespacedDeployment = this.coreV1Api.createNamespacedDeployment(
-                            foo.getMetadata().getNamespace(), deployment, "true", null, "", "");
-                    Assert.notNull(namespacedDeployment, () -> "the Deployment result should be non-null");
-                    log.info("created a deployment called " + nameOfDeployment);
-                } //
-                catch (Throwable t) {
-                    log.error("nooo!", t);
-                }
-            }
-        }//
-        else {
-            log.info("there are no Foos that match the requested name and namespace. " +
-                    "We should check for the deployment and delete it if it exists");
-
-        }
-
-        return new Result(false);
-    }
-
-    @SneakyThrows
-    private static <T> T loadYamlAs(Resource resource, Class<T> clzz) {
-        var yaml = FileCopyUtils.copyToString(
-                new InputStreamReader(resource.getInputStream()));
-        return Yaml.loadAs(yaml, clzz);
-    }
-}
-*/
