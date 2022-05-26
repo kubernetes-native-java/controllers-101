@@ -64,7 +64,7 @@ public class FooControllerApplication {
 
     @Bean
     SharedIndexInformer<V1Foo> foosSharedIndexInformer(SharedInformerFactory sharedInformerFactory, GenericKubernetesApi<V1Foo, V1FooList> api) {
-        return sharedInformerFactory.sharedIndexInformerFor(api, V1Foo.class, 0);
+        return sharedInformerFactory.sharedIndexInformerFor(api, V1Foo.class,  0);
     }
 
     @Bean
@@ -116,11 +116,13 @@ public class FooControllerApplication {
             SharedIndexInformer<V1Foo> v1FooSharedIndexInformer,
             AppsV1Api appsV1Api) {
         return request -> {
-
             try {
                 // create new one on k apply -f foo.yaml
                 String key = request.getNamespace() + '/' + request.getName();
                 V1Foo foo = v1FooSharedIndexInformer.getIndexer().getByKey(key);
+                if (foo == null) {
+                    return new Result(false);
+                }
                 V1Deployment deployment = loadYamlAs(deploymentYaml, V1Deployment.class);
                 deployment.getMetadata().setName("deployment-" + request.getName());
                 deployment.getMetadata()
@@ -144,14 +146,12 @@ public class FooControllerApplication {
                     System.out.println("It worked! we created a new one!");
                 }//
                 catch (Throwable throwable) {
-
                     if (throwable instanceof ApiException apiException) {
-                        log.info("the Deployment already exists. Replacing.");
                         int code = apiException.getCode();
                         if (code == 409) { // already exists
+                            log.info("the Deployment already exists. Replacing.");
                             appsV1Api.replaceNamespacedDeployment(deployment.getMetadata().getName(),
                                     namespace, deployment, pretty, dryRun, fieldManager, fieldValidation);
-
                         }
                     } else {
                         log.error("we've got an error.", throwable);
