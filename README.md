@@ -4,7 +4,7 @@
 
 ## Generate a new spring native project from start.spring.io
 
-We'll need a new project from the [Spring Initializr](https://start.spring.io). Make sure to select `Spring Native` and `Reactive Web`.
+We'll need a new project from the [Spring Initializr](https://start.spring.io). Make sure to select `Spring Native` and `Reactive Web`, and `Lombok`.
 
 
 
