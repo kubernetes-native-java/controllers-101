@@ -1,6 +1,7 @@
 package io.spring;
 
 import com.google.gson.JsonElement;
+import io.kubernetes.client.common.KubernetesObject;
 import io.kubernetes.client.extended.controller.Controller;
 import io.kubernetes.client.extended.controller.builder.ControllerBuilder;
 import io.kubernetes.client.extended.controller.builder.DefaultControllerBuilder;
@@ -11,9 +12,8 @@ import io.kubernetes.client.informer.SharedInformerFactory;
 import io.kubernetes.client.openapi.ApiClient;
 import io.kubernetes.client.openapi.ApiException;
 import io.kubernetes.client.openapi.apis.AppsV1Api;
-import io.kubernetes.client.openapi.models.V1Deployment;
-import io.kubernetes.client.openapi.models.V1DeploymentList;
-import io.kubernetes.client.openapi.models.V1OwnerReference;
+import io.kubernetes.client.openapi.apis.CoreV1Api;
+import io.kubernetes.client.openapi.models.*;
 import io.kubernetes.client.util.Yaml;
 import io.kubernetes.client.util.generic.GenericKubernetesApi;
 import io.spring.models.V1Foo;
@@ -30,19 +30,22 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.core.io.Resource;
 import org.springframework.nativex.hint.TypeAccess;
 import org.springframework.nativex.hint.TypeHint;
+import org.springframework.util.Assert;
 import org.springframework.util.FileCopyUtils;
 
 import java.io.InputStreamReader;
 import java.time.Duration;
+import java.time.Instant;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 //
 // https://github.com/kubernetes-client/java/tree/master/examples/examples-release-13
-//
+// https://scriptcrunch.com/change-nginx-index-configmap/
 @Log4j2
-@TypeHint(
-        access = {TypeAccess.DECLARED_FIELDS, TypeAccess.DECLARED_METHODS, TypeAccess.DECLARED_CONSTRUCTORS, TypeAccess.DECLARED_CLASSES}, //
+@TypeHint(access = {TypeAccess.DECLARED_FIELDS, TypeAccess.DECLARED_METHODS, TypeAccess.DECLARED_CONSTRUCTORS, TypeAccess.DECLARED_CLASSES}, //
         types = {JsonElement.class, V1Foo.class, V1FooList.class, V1FooSpec.class, V1FooStatus.class}//
 )
 @SpringBootApplication
@@ -64,7 +67,7 @@ public class FooControllerApplication {
 
     @Bean
     SharedIndexInformer<V1Foo> foosSharedIndexInformer(SharedInformerFactory sharedInformerFactory, GenericKubernetesApi<V1Foo, V1FooList> api) {
-        return sharedInformerFactory.sharedIndexInformerFor(api, V1Foo.class,  0);
+        return sharedInformerFactory.sharedIndexInformerFor(api, V1Foo.class, 0);
     }
 
     @Bean
@@ -73,9 +76,12 @@ public class FooControllerApplication {
     }
 
     @Bean
-    Controller controller(SharedInformerFactory sharedInformerFactory,
-                          SharedIndexInformer<V1Foo> fooNodeInformer,
-                          Reconciler reconciler) {
+    CoreV1Api coreV1Api(ApiClient apiClient) {
+        return new CoreV1Api(apiClient);
+    }
+
+    @Bean
+    Controller controller(SharedInformerFactory sharedInformerFactory, SharedIndexInformer<V1Foo> fooNodeInformer, Reconciler reconciler) {
 
         DefaultControllerBuilder builder = ControllerBuilder //
                 .defaultBuilder(sharedInformerFactory)//
@@ -98,83 +104,126 @@ public class FooControllerApplication {
     }
 
     @Bean
-    ApplicationRunner runner(
-            ExecutorService executorService, SharedInformerFactory sharedInformerFactory, Controller controller) {
+    ApplicationRunner runner(ExecutorService executorService, SharedInformerFactory sharedInformerFactory, Controller controller) {
         return args -> executorService.execute(() -> {
             sharedInformerFactory.startAllRegisteredInformers();
             controller.run();
         });
     }
 
+    @FunctionalInterface
+    interface ApiSupplier<T> {
+
+        T get() throws ApiException;
+    }
+
+
     /**
      * the Reconciler won't get an event telling it that the cluster has changed,
      * but instead it looks at cluster state and determines that something has changed
      */
     @Bean
-    Reconciler reconciler(
-            @Value("classpath:deployment.yaml") Resource deploymentYaml,
-            SharedIndexInformer<V1Foo> v1FooSharedIndexInformer,
-            AppsV1Api appsV1Api) {
+    Reconciler reconciler(@Value("classpath:configmap.yaml") Resource configMapYaml, @Value("classpath:deployment.yaml") Resource deploymentYaml, SharedIndexInformer<V1Foo> v1FooSharedIndexInformer, AppsV1Api appsV1Api, CoreV1Api coreV1Api) {
         return request -> {
             try {
                 // create new one on k apply -f foo.yaml
-                String key = request.getNamespace() + '/' + request.getName();
+                String requestName = request.getName();
+                String key = request.getNamespace() + '/' + requestName;
                 V1Foo foo = v1FooSharedIndexInformer.getIndexer().getByKey(key);
                 if (foo == null) { // deleted. we use ownerreferences so dont need to do anything special here
                     return new Result(false);
                 }
-                V1Deployment deployment = loadYamlAs(deploymentYaml, V1Deployment.class);
-                deployment.getMetadata().setName("deployment-" + request.getName());
-                deployment.getMetadata()
-                        .addOwnerReferencesItem(
-                                new V1OwnerReference()
-                                        .kind(foo.getKind())
-                                        .apiVersion(foo.getApiVersion())
-                                        .controller(true)
-                                        .uid(foo.getMetadata().getUid())
-                                        .name(request.getName())
-                        );
 
                 String namespace = foo.getMetadata().getNamespace();
                 String pretty = "true";
                 String dryRun = null;
                 String fieldManager = "";
                 String fieldValidation = "";
-                try {
-                    appsV1Api.createNamespacedDeployment(
-                            namespace, deployment, pretty, dryRun, fieldManager, fieldValidation);
-                    System.out.println("It worked! we created a new one!");
-                }//
-                catch (Throwable throwable) {
-                    if (throwable instanceof ApiException apiException) {
-                        int code = apiException.getCode();
-                        if (code == 409) { // already exists
-                            log.info("the Deployment already exists. Replacing.");
-                            appsV1Api.replaceNamespacedDeployment(deployment.getMetadata().getName(),
-                                    namespace, deployment, pretty, dryRun, fieldManager, fieldValidation);
-                        }
-                    } else {
-                        log.error("we've got an error.", throwable);
-                        return new Result(true, Duration.ofSeconds(10));
-                    }
-                }
 
+                // parameterize configmap
+                String configMapName = "configmap-" + requestName;
+                V1ConfigMap configMap = loadYamlAs(configMapYaml, V1ConfigMap.class);
+                String html = "<h1> Hello, " + foo.getSpec().getName() + " </h1>";
+                configMap.getData().put("index.html", html);
+                configMap.getMetadata().setName(configMapName);
+                String deploymentName = "deployment-" + requestName;
+                createOrUpdate(V1ConfigMap.class, () -> {
+                    addOwnerReference(requestName, foo, configMap);
+                    return coreV1Api.createNamespacedConfigMap(namespace, configMap, pretty, dryRun, fieldManager, fieldValidation);
+                }, () -> {
+                    V1ConfigMap v1ConfigMap = coreV1Api
+                            .replaceNamespacedConfigMap(configMapName, namespace, configMap, pretty, dryRun, fieldManager, fieldValidation);
+                    // todo now we need to add an annotation to the deployment
+
+                    return v1ConfigMap;
+                });
+
+                // parameterize deployment
+                V1Deployment deployment = loadYamlAs(deploymentYaml, V1Deployment.class);
+                deployment.getMetadata().setName(deploymentName);
+                List<V1Volume> volumes = deployment.getSpec().getTemplate().getSpec().getVolumes();
+                Assert.isTrue(volumes.size() == 1, () -> "there should be only one V1Volume");
+                volumes.forEach(vol -> vol.getConfigMap().setName(configMapName));
+                createOrUpdate(V1Deployment.class, () -> {
+
+
+                    deployment.getSpec()
+                            .getTemplate()
+                            .getMetadata()
+                            .setAnnotations(Map.of("bootiful-update", Instant.now().toString()));
+
+
+                    addOwnerReference(requestName, foo, deployment);
+                    return appsV1Api.createNamespacedDeployment(namespace, deployment, pretty, dryRun, fieldManager, fieldValidation);
+                }, () -> {
+                    deployment.getSpec()
+                            .getTemplate()
+                            .getMetadata()
+                            .setAnnotations(Map.of("bootiful-update", Instant.now().toString()));
+                    return appsV1Api.replaceNamespacedDeployment(deploymentName, namespace, deployment, pretty, dryRun, fieldManager, fieldValidation);
+                });
 
             }//
             catch (Throwable e) {
                 log.error("we've got an outer error.", e);
                 return new Result(true, Duration.ofSeconds(60));
             }
-
             return new Result(false);
-
         };
+    }
+
+    static private <T> void createOrUpdate(Class<T> clazz, ApiSupplier<T> creator, ApiSupplier<T> updater) {
+        try {
+            creator.get();
+            log.info("It worked! we created a new " + clazz.getName() + "!");
+        }//
+        catch (ApiException throwable) {
+            int code = throwable.getCode();
+            if (code == 409) { // already exists
+                log.info("the " + clazz.getName() + " already exists. Replacing.");
+                try {
+                    updater.get();
+                    log.info("successfully updated the " + clazz.getName());
+                } catch (ApiException ex) {
+                    log.error("got an error on update", ex);
+                }
+            } //
+            else {
+                log.info("got an exception with code " + code + " while trying to create the " + clazz.getName());
+            }
+        }
+
+    }
+
+
+    private static V1ObjectMeta addOwnerReference(String requestName, V1Foo foo, KubernetesObject kubernetesObject) {
+        Assert.notNull(foo, () -> "the V1Foo must not be null");
+        return kubernetesObject.getMetadata().addOwnerReferencesItem(new V1OwnerReference().kind(foo.getKind()).apiVersion(foo.getApiVersion()).controller(true).uid(foo.getMetadata().getUid()).name(requestName));
     }
 
     @SneakyThrows
     private static <T> T loadYamlAs(Resource resource, Class<T> clzz) {
-        var yaml = FileCopyUtils.copyToString(
-                new InputStreamReader(resource.getInputStream()));
+        var yaml = FileCopyUtils.copyToString(new InputStreamReader(resource.getInputStream()));
         return Yaml.loadAs(yaml, clzz);
     }
 }

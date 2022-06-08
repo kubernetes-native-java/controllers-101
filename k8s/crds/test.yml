@@ -3,4 +3,4 @@ kind: Foo
 metadata:
   name: demo2
 spec:
-  name: bootiful-foo
+  name: SpringOne Tour 2
