@@ -212,9 +212,7 @@ public class FooControllerApplication {
                 log.info("got an exception with code " + code + " while trying to create the " + clazz.getName());
             }
         }
-
     }
-
 
     private static V1ObjectMeta addOwnerReference(String requestName, V1Foo foo, KubernetesObject kubernetesObject) {
         Assert.notNull(foo, () -> "the V1Foo must not be null");
