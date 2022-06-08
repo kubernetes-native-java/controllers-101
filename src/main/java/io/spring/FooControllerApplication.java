@@ -165,24 +165,16 @@ public class FooControllerApplication {
                 Assert.isTrue(volumes.size() == 1, () -> "there should be only one V1Volume");
                 volumes.forEach(vol -> vol.getConfigMap().setName(configMapName));
                 createOrUpdate(V1Deployment.class, () -> {
-
-
                     deployment.getSpec()
                             .getTemplate()
                             .getMetadata()
                             .setAnnotations(Map.of("bootiful-update", Instant.now().toString()));
-
-
                     addOwnerReference(requestName, foo, deployment);
                     return appsV1Api.createNamespacedDeployment(namespace, deployment, pretty, dryRun, fieldManager, fieldValidation);
                 }, () -> {
-                    deployment.getSpec()
-                            .getTemplate()
-                            .getMetadata()
-                            .setAnnotations(Map.of("bootiful-update", Instant.now().toString()));
+                    updateAnnotation(deployment);
                     return appsV1Api.replaceNamespacedDeployment(deploymentName, namespace, deployment, pretty, dryRun, fieldManager, fieldValidation);
                 });
-
             }//
             catch (Throwable e) {
                 log.error("we've got an outer error.", e);
@@ -190,6 +182,14 @@ public class FooControllerApplication {
             }
             return new Result(false);
         };
+    }
+
+
+    private void updateAnnotation(V1Deployment deployment) {
+        deployment.getSpec()
+                .getTemplate()
+                .getMetadata()
+                .setAnnotations(Map.of("bootiful-update", Instant.now().toString()));
     }
 
     static private <T> void createOrUpdate(Class<T> clazz, ApiSupplier<T> creator, ApiSupplier<T> updater) {
