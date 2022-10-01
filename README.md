@@ -6,7 +6,9 @@
 
 We'll need a new project from the [Spring Initializr](https://start.spring.io). Make sure to select `Spring Native` and `Reactive Web`, and `Lombok`.
 
+## Want to use Native and AOT? 
 
+Make sure that the code in https://github.com/kubernetes-client/java/pull/2402 gets contributed or compile it yourself :) 
 
 ## Add to `pom.xml`
 
