@@ -19,15 +19,11 @@ import io.spring.models.V1Foo;
 import io.spring.models.V1FooList;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.aot.hint.RuntimeHints;
-import org.springframework.aot.hint.RuntimeHintsRegistrar;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.ImportRuntimeHints;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.Resource;
 import org.springframework.util.Assert;
 import org.springframework.util.FileCopyUtils;
@@ -40,20 +36,8 @@ import java.util.Map;
 import java.util.concurrent.Executors;
 
 @Slf4j
-@ImportRuntimeHints(FooControllerApplication.FooControllerRuntimeHints.class)
 @SpringBootApplication
 public class FooControllerApplication {
-
-	static class FooControllerRuntimeHints implements RuntimeHintsRegistrar {
-
-		@Override
-		public void registerHints(RuntimeHints hints, ClassLoader classLoader) {
-			for (var path : new String[] { "/configmap.yaml", "/deployment.yaml" }) {
-				hints.resources().registerResource(new ClassPathResource(path));
-			}
-		}
-
-	}
 
 	public static void main(String[] args) {
 		SpringApplication.run(FooControllerApplication.class, args);
