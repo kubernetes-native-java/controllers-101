@@ -20,14 +20,10 @@ Anyway, add:
         <dependency>
             <groupId>io.kubernetes</groupId>
             <artifactId>client-java-spring-integration</artifactId>
-            <version>15.0.0</version>
+            <version>16.0.0</version>
             <optional>true</optional>
         </dependency>
-        <dependency>
-            <groupId>com.joshlong</groupId>
-            <artifactId>hints</artifactId>
-            <version>0.0.1</version>
-        </dependency>
+  
 ```
 
 ## Stage
