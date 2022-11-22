@@ -37,6 +37,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.Executors;
 
 @Slf4j
@@ -86,8 +87,8 @@ public class FooControllerApplication {
 		return new CoreV1Api(apiClient);
 	}
 
-	@Bean
-	Controller controller(SharedInformerFactory sharedInformerFactory, SharedIndexInformer<V1Foo> fooNodeInformer,
+	@Bean(destroyMethod = "shutdown")
+	Controller fooController(SharedInformerFactory sharedInformerFactory, SharedIndexInformer<V1Foo> fooNodeInformer,
 			Reconciler reconciler) {
 
 		DefaultControllerBuilder builder = ControllerBuilder //
@@ -193,7 +194,7 @@ public class FooControllerApplication {
 	}
 
 	private void updateAnnotation(V1Deployment deployment) {
-		deployment.getSpec().getTemplate().getMetadata()
+		Objects.requireNonNull(Objects.requireNonNull(deployment.getSpec()).getTemplate().getMetadata())
 				.setAnnotations(Map.of("bootiful-update", Instant.now().toString()));
 	}
 
