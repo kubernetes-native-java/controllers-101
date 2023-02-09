@@ -12,20 +12,16 @@ Make sure that the code in https://github.com/kubernetes-client/java/pull/2402 g
 
 ## Add to `pom.xml`
 
-The Spring Initializr will get us most of the way (it does _a lot _ of code generation) but we need to add some extra dependencies. The first dependency
-is the official Java client for Kubernetes. The second dependency is a set of custom Spring Native hints that Josh wrote for a bunch of different projects. In an ideal world, this won't be required forever. When Spring Framework 6 drops, this kind of stuff might be better placed in the official Java client itself. 
-If you want to use the RedHat Fabric8 Java client, well there are hints for that, too! And conceptually, a lot of what we're going to look at is the same in both Fabric 8 and the official Java client, since they're both code-generated from the same OpenAPI definitions. The packages and particulars may change, of course. 
+The Spring Initializr will get us most of the way (it does _a lot _ of code generation) but we need to add an extra dependency -- the official Java client for Kubernetes.
 
 Anyway, add:
 
 ```xml
         <dependency>
             <groupId>io.kubernetes</groupId>
-            <artifactId>client-java-spring-integration</artifactId>
-            <version>16.0.0</version>
-            <optional>true</optional>
+            <artifactId>client-java-spring-aot-integration</artifactId>
+            <version>17.0.0</version>
         </dependency>
-  
 ```
 
 ## Stage
@@ -168,7 +164,7 @@ We'll also need references fo the `GenericKubernetesAPi` for `Deployments` and a
 ## Deploy an Instance of the `foo` Object
 
 ```shell
-k apply -f k8s/crds/test.yml
+k apply -f k8s/crds/test.yaml
 ```
 
 
