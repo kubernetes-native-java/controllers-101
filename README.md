@@ -4,17 +4,15 @@
 
 ## Generate a new spring native project from start.spring.io
 
-We'll need a new project from the [Spring Initializr](https://start.spring.io). Make sure to select `Spring Native` and `Reactive Web`, and `Lombok`.
+We'll need a new project from the [Spring Initializr](https://start.spring.io). Make sure to select `GraalVM Native Image` and `Lombok`.
 
-## Want to use Native and AOT? 
+It'll generate everything and put it in the `io.spring.controllers` package. To keep things simpler, we've moved everything up one package, to `io.spring`. Delete the `controllers` package for both `src/main` and `src/test`. 
 
-Make sure that the code in https://github.com/kubernetes-client/java/pull/2402 gets contributed or compile it yourself :) 
-
-## Add to `pom.xml`
+## Customize the build file 
 
 The Spring Initializr will get us most of the way (it does _a lot _ of code generation) but we need to add an extra dependency -- the official Java client for Kubernetes.
 
-Anyway, add:
+If you're using Apache Maven, add this:
 
 ```xml
         <dependency>
@@ -24,48 +22,46 @@ Anyway, add:
         </dependency>
 ```
 
+If you're using Gradle, add this to your dependencies:
+
+```groovy
+    implementation 'io.kubernetes:client-java-spring-aot-integration:17.0.0'
+```
+
 ## Stage
 
 Copy `bin` and `k8s` from the source code to the new project generated from the Spring Initializr
 
-## Authenticate with GitHub Because Reasons
 
-You'll need a GitHub Personal Access Token (PAT). You can get the PAT from GitHub Settings 
 
-```shell
-cat ~/TOKEN.txt | docker login https://docker.pkg.github.com -u USERNAME --password-stdin 
-```
-
-## Deploy the CRD to Kubernetes 
+## Deploy the CRD to Kubernetes
 
 ```shell
-k apply -f k8s/crds/foo.yaml
+k apply -f bin/foo.yaml
 ```
 
-We should be able to do 
+We should be able to do
 
 
 ```shell
 k get crds
 ```
 
-And see the newly minted CRD. Now would also be an apropos time to show the audience the soul-annihilatingly tedious definition of the CRD itself (`foo.yaml`). This CRD is why the K8s community can't have nice things.
+And see the newly minted CRD. Now would also be an apropos time to show the audience the soul-annihilating-ly tedious definition of the CRD itself (`foo.yaml`). This CRD is why the Kubernetes community can't have nice things.
 
-We should also show the `test.yaml`, but don't apply it yet. This way people get the distinction between the archetypal definition of the CRD and an instance of the CRD. 
+We should also show the `test.yaml`, but don't apply it yet. This way people get the distinction between the archetypal definition of the CRD and an instance of the CRD.
 
 ## Run the Code Generator for the Image
 
-We'll need a little script to help us code-generate the Java code for our CRDs. Copy the `regen_crd_java.sh` script from our backup directory to the new project, in a directory called `bin`:
+We'll need a little script to help us code-generate the Java code for our CRDs. Copy the `regen_crds.sh` script from our backup directory to the new project, in a directory called `bin`:
 
 ```shell 
-./bin/regen_crd_java.sh
+./bin/regen_crd.sh
 ```
 
-You should have some source code dumped in a directory specified in `gen` to be moved to the `src/main/java/io/spring/models` folder. Introduce the code generated Java classes. 
+## And then a Miracle Happens
 
-## And then a Miracle Happens 
-
-There are several main concepts we need to understand before the code we're about to write makes sense. 
+There are several main concepts we need to understand before the code we're about to write makes sense.
 
 
 ### Controller
@@ -94,7 +90,7 @@ Kubernetes is an edge-leveled reconciling controller. Basically, it will spin up
     }
 ```
 
-Things are broken! We don't have any of the three dependencies expressed here: `SharedInformerFactory`, `Reconciler`, and `SharedIndexInformer<V1Foo>`. 
+Things are broken! We don't have any of the three dependencies expressed here: `SharedInformerFactory`, `Reconciler`, and `SharedIndexInformer<V1Foo>`.
 
 ```java
 
@@ -107,7 +103,7 @@ Things are broken! We don't have any of the three dependencies expressed here: `
 
 ```
 
-This in turn implies a dependency on `GenericKubernetesApi<V1Foo,V1FooList>`. 
+This in turn implies a dependency on `GenericKubernetesApi<V1Foo,V1FooList>`.
 
 ```java 
  @Bean
@@ -117,7 +113,7 @@ This in turn implies a dependency on `GenericKubernetesApi<V1Foo,V1FooList>`.
     }
 ```
 
-We'll also need a `GenericKubernetesApi` for `Deployment`s, too, so let's get that out of the way now: 
+We'll also need a `GenericKubernetesApi` for `Deployment`s, too, so let's get that out of the way now:
 
 
 ```java 
@@ -130,13 +126,13 @@ We'll also need a `GenericKubernetesApi` for `Deployment`s, too, so let's get th
 
 ```
 
-They're identical, except for their generic parameters and the string definitions of the group, and pluralized form of their nouns. These API clients let us talk to the API server about a given type of CRD, in this case `Foo` and `Deployment`, respectively. 
+They're identical, except for their generic parameters and the string definitions of the group, and pluralized form of their nouns. These API clients let us talk to the API server about a given type of CRD, in this case `Foo` and `Deployment`, respectively.
 
-We need the `SharedIndexInformer<V1Foo>`, too. 
+We need the `SharedIndexInformer<V1Foo>`, too.
 
-What's an `Informer`, you ask? An informer "is a" - and we're not making this iup - controller together with the ability to distribute its `Queue`-related operations to an appropriate event handler.  There are `SharedInformer`s that share data across multiple instances of the `Informer` so that they're not duplicated. A `SharedInformer` has a shared data cache and is capable of distributing notifications for changes to the cache to multiple listeners who registered with it. There is one behavior change compared to a standard `Informer`: when you receive a notification, the cache will be _at least_ as fresh as the notification, but it _may_ be more fresh. You should not depend on the contents of the cache exactly matching the state implied by the notification. The notification is binding. `SharedIndexInformer` only adds one more thing to the picture: the ability to lookup items by various keys. So, a controller sometimes needs a conceptually-a-controller to be a controller. Got it? Got it. 
+What's an `Informer`, you ask? An informer "is a" - and we're not making this iup - controller together with the ability to distribute its `Queue`-related operations to an appropriate event handler.  There are `SharedInformer`s that share data across multiple instances of the `Informer` so that they're not duplicated. A `SharedInformer` has a shared data cache and is capable of distributing notifications for changes to the cache to multiple listeners who registered with it. There is one behavior change compared to a standard `Informer`: when you receive a notification, the cache will be _at least_ as fresh as the notification, but it _may_ be more fresh. You should not depend on the contents of the cache exactly matching the state implied by the notification. The notification is binding. `SharedIndexInformer` only adds one more thing to the picture: the ability to lookup items by various keys. So, a controller sometimes needs a conceptually-a-controller to be a controller. Got it? Got it.
 
-Next, we'll need to define the `Reconciler` itself: 
+Next, we'll need to define the `Reconciler` itself:
 
 ```java
    @Bean
@@ -149,28 +145,39 @@ Next, we'll need to define the `Reconciler` itself:
     }
 ```
 
-Here's where the rubber meets the road: our reconciler will create a new `Deployment` every time a new `Foo` is created. We like you too much to programmatically build up the `Deployment` from scratch in Java, so we'll just reuse a pre-written YAML definition (`/deployment.yaml`) of a `Deployment` and then reify it, changing some of its parameters, and submit that. 
+Here's where the rubber meets the road: our reconciler will create a new `Deployment` every time a new `Foo` is created. We like you too much to programmatically build up the `Deployment` from scratch in Java, so we'll just reuse a pre-written YAML definition (`/deployment.yaml`) of a `Deployment` and then reify it, changing some of its parameters, and submit that.
 
-We'll also need references fo the `GenericKubernetesAPi` for `Deployments` and a new thing, called the `AppsV1Api`. This API sidesteps all the caching and indexing and allows us to talk directly to the API server. You could achieve this without using the API, but it simplifies things sometimes and it's instructional to see it in action, so: 
+We'll also need references fo the `GenericKubernetesAPi` for `Deployments` and a new thing, called the `AppsV1Api`. This API sidesteps all the caching and indexing and allows us to talk directly to the API server. You could achieve this without using the API, but it simplifies things sometimes and it's instructional to see it in action, so:
 
 ```java
-  @Bean
+    @Bean
     AppsV1Api appsV1Api(ApiClient apiClient) {
-        return new AppsV1Api(apiClient);
+       return new AppsV1Api(apiClient);
     }
 ```
-
 
 ## Deploy an Instance of the `foo` Object
 
 ```shell
-k apply -f k8s/crds/test.yaml
+k apply -f bin/test.yaml
 ```
 
+## Run the Program
+
+If you're using Apache Maven: `./mvnw spring-boot:run`
+
+If you're using Gradle: `./gradlew bootRun`
 
 
+## Compile a GraalVM Native Image
 
-## Resources 
+
+If you're using Apache Maven: `./mvnw -Pnative native:compile`
+
+If you're using Gradle: `./gradlew nativeCompile`
+
+
+## Resources
 - [we found the following post supremely useful for navigating this nightmare world](https://lairdnelson.wordpress.com/2018/01/07/understanding-kubernetes-tools-cache-package-part-3/)
 - [Generating models from CRD YAML definitions for fun and profit](https://github.com/kubernetes-client/java/blob/master/docs/generate-model-from-third-party-resources.md)
 
