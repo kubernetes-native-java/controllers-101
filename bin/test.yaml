@@ -1,0 +1,6 @@
+apiVersion: spring.io/v1
+kind: Foo
+metadata:
+  name: demo2
+spec:
+  name: SpringOne Tour 1
