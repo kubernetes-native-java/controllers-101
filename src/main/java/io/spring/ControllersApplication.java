@@ -67,12 +67,6 @@ public class ControllersApplication {
 	}
 
 	@Bean
-	GenericKubernetesApi<V1Deployment, V1DeploymentList> deploymentsApi(ApiClient apiClient) {
-		return new GenericKubernetesApi<>(V1Deployment.class, V1DeploymentList.class, "", "v1", "deployments",
-				apiClient);
-	}
-
-	@Bean
 	SharedIndexInformer<V1Foo> foosSharedIndexInformer(SharedInformerFactory sharedInformerFactory,
 													   GenericKubernetesApi<V1Foo, V1FooList> api) {
 		return sharedInformerFactory.sharedIndexInformerFor(api, V1Foo.class, 0);
@@ -155,20 +149,15 @@ public class ControllersApplication {
 				String html = "<h1> Hello, " + foo.getSpec().getName() + " </h1>";
 				configMap.getData().put("index.html", html);
 				configMap.getMetadata().setName(configMapName);
-				String deploymentName = "deployment-" + requestName;
 				createOrUpdate(V1ConfigMap.class, () -> {
 					addOwnerReference(requestName, foo, configMap);
 					return coreV1Api.createNamespacedConfigMap(namespace, configMap, pretty, dryRun, fieldManager,
 							fieldValidation);
-				}, () -> {
-					V1ConfigMap v1ConfigMap = coreV1Api.replaceNamespacedConfigMap(configMapName, namespace, configMap,
-							pretty, dryRun, fieldManager, fieldValidation);
-					// todo now we need to add an annotation to the deployment
-
-					return v1ConfigMap;
-				});
+				}, () -> coreV1Api.replaceNamespacedConfigMap(configMapName, namespace, configMap,
+							pretty, dryRun, fieldManager, fieldValidation));
 
 				// parameterize deployment
+				String deploymentName = "deployment-" + requestName;
 				V1Deployment deployment = loadYamlAs(deploymentYaml, V1Deployment.class);
 				deployment.getMetadata().setName(deploymentName);
 				List<V1Volume> volumes = deployment.getSpec().getTemplate().getSpec().getVolumes();
